@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Messenger</title>
+</head>
+<body>
+    <h1>Messenger</h1>
+
+    <label>Benutzername: <input id="usernameInput" autocomplete="off"/></label>
+    <button onclick="setUsername()">OK</button>
+    <br><br>
+
+    <input id="messageInput" autocomplete="off"/>
+    <button onclick="sendMessage()">Senden</button>
+
+    <h3>Nachrichten:</h3>
+    <ul id="messages">
+        {% for msg in messages %}
+            <li>{{ msg.username }}: {{ msg.content }}</li>
+        {% endfor %}
+    </ul>
+
+    <h3>Online:</h3>
+    <ul id="users"></ul>
+
+<script>
+let ws = null;
+let username = localStorage.getItem("username") || "";
+let messageQueue = [];
+
+// Benutzername setzen
+function setUsername() {
+    username = document.getElementById("usernameInput").value.trim();
+    if (!username) {
+        alert("Bitte einen Benutzernamen eingeben!");
+        return;
+    }
+    localStorage.setItem("username", username);
+    connectWebSocket();
+}
+
+// WebSocket verbinden
+function connectWebSocket() {
+    if (ws && ws.readyState === WebSocket.OPEN) return;
+
+    ws = new WebSocket("ws://localhost:8000/ws?username=" + encodeURIComponent(username));
+
+    ws.onopen = function() {
+        console.log("WebSocket verbunden");
+        while (messageQueue.length > 0) ws.send(messageQueue.shift());
+    };
+
+    ws.onmessage = function(event) {
+        let msg = event.data;
+
+        // Sondernachricht: Userliste
+        if (msg.startsWith("__users__:")) {
+            let usersList = msg.replace("__users__:", "").split(",");
+            let ul = document.getElementById("users");
+            ul.innerHTML = "";
+            usersList.forEach(u => {
+                let li = document.createElement("li");
+                li.innerText = u;
+                ul.appendChild(li);
+            });
+            return;
+        }
+
+        // Normale Nachricht anzeigen
+        let li = document.createElement("li");
+        li.innerText = msg;
+        document.getElementById("messages").appendChild(li);
+    };
+
+    ws.onclose = function() {
+        console.log("Verbindung geschlossen, versuche neu zu verbinden...");
+        setTimeout(connectWebSocket, 1000);
+    };
+}
+
+// Nachricht senden
+function sendMessage() {
+    if (!username) {
+        alert("Bitte zuerst den Benutzernamen setzen!");
+        return;
+    }
+
+    let input = document.getElementById("messageInput");
+    let msg = input.value.trim();
+    if (!msg) return;
+
+    // Eigene Nachricht sofort anzeigen
+    let li = document.createElement("li");
+    li.innerText = username + ": " + msg;
+    document.getElementById("messages").appendChild(li);
+
+    // Nachricht an Server senden
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(msg);
+    } else {
+        messageQueue.push(msg);
+        connectWebSocket();
+    }
+
+    input.value = "";
+}
+
+// Bereits gespeicherten Username verwenden
+if (username) {
+    document.getElementById("usernameInput").value = username;
+    connectWebSocket();
+}
+</script>
+
+</body>
+</html>
+
+
+
